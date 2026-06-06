@@ -300,6 +300,13 @@ class Crawler:
             except Exception:
                 continue
 
+    def get_search_urls(self) -> list:
+        """
+        Returns:
+            list: seed_urls param
+        """
+        return self.config.get_seed_urls()
+
 
 # 10
 

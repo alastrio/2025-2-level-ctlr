@@ -92,8 +92,8 @@ class Config:
         Returns:
             ConfigDTO: Config values
         """
-        with open(self.path_to_config, 'r', encoding='utf-8') as file:
-            return ConfigDTO(**json.load(file))
+        with open(self.path_to_config, 'r', encoding='utf-8') as f:
+            return ConfigDTO(**json.load(f))
 
     def _validate_config_content(self) -> None:
         """
@@ -201,14 +201,13 @@ def make_request(url: str, config: Config) -> requests.models.Response:
     Returns:
         requests.models.Response: A response from a request
     """
-    headers = config.get_headers()
-    timeout = config.get_timeout()
-    verify = config.get_verify_certificate()
-    response = requests.get(url, headers=headers, timeout=timeout, verify=verify)
-    # except requests.exceptions.Timeout:
-    #     print("Timeout: Server didn't respond in 3s")
-    # except requests.exceptions.RequestException as e:
-    #     print(f"Request failed: {e}")
+    response = requests.get(
+        url,
+        headers=config.get_headers(),
+        timeout=config.get_timeout(),
+        verify=config.get_verify_certificate()
+    )
+    response.encoding = config.get_encoding()
     return response
 
 
@@ -240,30 +239,59 @@ class Crawler:
         Returns:
             str: Url from HTML
         """
-        relative_url = str(article_bs.get("href"))
-        return relative_url
+        href = article_bs.get("href", "")
+        if not href:
+            return ""
+
+        href_str = str(href)
+
+        if href_str.startswith("http"):
+            return href_str
+
+        if href_str.startswith("/"):
+            href_str = href_str[1:]
+
+        return "http://www.jvanetsky.ru/" + href_str
+
 
     def find_articles(self) -> None:
         """
         Find articles.
         """
-        for seed_url in self.config.get_seed_urls():
-            if len(self.urls) > self.config.get_num_articles():
+        needed = self.config.get_num_articles()
+        seeds_to_visit = list(self.config.get_seed_urls())
+        visited_seeds = set()
+
+        for seed_url in seeds_to_visit:
+            if len(self.urls) >= needed:
                 break
+            if seed_url in visited_seeds:
+                continue
+            visited_seeds.add(seed_url)
+
             response = make_request(seed_url, self.config)
-            if response and response.status_code == 200:
-                soup = BeautifulSoup(response.text)
-                all_links = soup.find_all("a")
-                for link_tag in all_links:
-                    new_relative_url = self._extract_url(link_tag)
-                    new_full_url = urljoin(seed_url, new_relative_url)
-                    if (
-                    '/item/' in new_full_url
-                    and
-                    new_full_url not in self.urls
-                    ):
-                        self.urls.append(new_full_url)
-                    time.sleep(1)
+            if not response or response.status_code != 200:
+                continue
+
+            soup = BeautifulSoup(response.content, 'html.parser')
+
+            for link in soup.find_all('a'):
+                href = link.get("href", "")
+                if not href:
+                    continue
+
+                article_url = self._extract_url(link)
+                if not article_url or not article_url.startswith("http://www.jvanetsky.ru/"):
+                    continue
+
+                if "/page/" in article_url:
+                    if article_url not in visited_seeds and article_url not in seeds_to_visit:
+                        seeds_to_visit.append(article_url)
+                    continue
+
+                if link.find_parent(['h1', 'h2', 'article']) and article_url not in self.urls:
+                    if len(self.urls) < needed:
+                        self.urls.append(article_url)
 
     def get_search_urls(self) -> list:
         """
@@ -360,17 +388,13 @@ class HTMLParser:
         Returns:
             Article | bool: Article instance, False in case of request error
         """
-        try:
-            response = make_request(self.full_url, self.config)
-            time.sleep(1)
-            if response.status_code != 200:
-                return False
-            response.encoding = self.config.get_encoding()
-            article_bs = BeautifulSoup(response.text, "html.parser")
-            self._fill_article_with_text(article_bs)
-            self._fill_article_with_meta_information(article_bs)
-        except(requests.RequestException, AttributeError, KeyError, ValueError, TypeError):
-            return False
+        response = make_request(self.full_url, self.config)
+        if not response or response.status_code != 200:
+            return self.article
+
+        soup = BeautifulSoup(response.text, 'html.parser')
+        self._fill_article_with_meta_information(soup)
+        self._fill_article_with_text(soup)
         return self.article
 
 

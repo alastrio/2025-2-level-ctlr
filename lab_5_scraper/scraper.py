@@ -324,6 +324,7 @@ class CrawlerRecursive(Crawler):
         """
         Find number of article urls requested.
         """
+        
 
 
 # 4, 6, 8, 10
@@ -355,11 +356,14 @@ class HTMLParser:
         Args:
             article_soup (bs4.BeautifulSoup): BeautifulSoup instance
         """
-        paragraphs = article_soup.find_all('p')
-        text_blocks = [p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True)]
+        content_td = article_soup.find('td', class_='m')
+    
+        if content_td:
+            for unwanted in content_td.find_all(['div', 'p'], class_=['sys', 'nav']):
+                unwanted.decompose()
+        
+            self.article.text = content_td.get_text(separator=' ', strip=True)
 
-        final_text = ' '.join(text_blocks)
-        self.article.text = final_text
 
     def _fill_article_with_meta_information(self, article_soup: BeautifulSoup) -> None:
         """
@@ -389,8 +393,7 @@ class HTMLParser:
         """
         response = make_request(self.full_url, self.config)
         if not response or response.status_code != 200:
-            return self.article
-
+            return False
         soup = BeautifulSoup(response.text, 'html.parser')
         self._fill_article_with_text(soup)
         return self.article

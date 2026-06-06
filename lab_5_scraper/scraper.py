@@ -376,6 +376,41 @@ class HTMLParser:
         Args:
             article_soup (bs4.BeautifulSoup): BeautifulSoup instance
         """
+        title_tag = article_soup.find("title")
+        if title_tag:
+            raw_title = title_tag.text.strip()
+            if '|' in raw_title:
+                self.article.title = raw_title.split('|')[-1].strip()
+            else:
+                self.article.title = raw_title
+        else:
+            self.article.title = "NO TITLE"
+
+        author_tag = article_soup.find("meta", attrs={"name": "author"})
+        if author_tag and author_tag.get("content"):
+            self.article.author = [author_tag.get("content").strip()]
+        else:
+            self.article.author = ["NOT FOUND"]
+
+        time_tag = article_soup.find('time', class_='entry-date')
+        date_str = ""
+
+        if time_tag and time_tag.get_text():
+            raw_text = time_tag.get_text(strip=True)
+            date_match = re.search(r"\b\d{2}\.\d{2}\.\d{4}\b", raw_text)
+            if date_match:
+                date_str = date_match.group(0)
+
+        if not date_str:
+            date_pattern = re.compile(r"\b\d{2}\.\d{2}\.\d{4}\b")
+            date_match = date_pattern.search(article_soup.get_text())
+            if date_match:
+                date_str = date_match.group(0)
+
+        if date_str:
+            self.article.date = self.unify_date_format(date_str)
+        else:
+            self.article.date = datetime.datetime.now()
 
     def unify_date_format(self, date_str: str) -> datetime.datetime:
         """

@@ -251,7 +251,7 @@ class Crawler:
         if href_str.startswith("/"):
             href_str = href_str[1:]
 
-        return "https://carsson.ru/" + href_str
+        return "http://www.jvanetsky.ru/" + href_str
 
 
     def find_articles(self) -> None:
@@ -259,49 +259,46 @@ class Crawler:
         Find articles.
         """
         needed = self.config.get_num_articles()
-        seeds_to_visit = list(self.config.get_seed_urls())
-        visited_seeds = set()
-
-        blacklisted_keywords = [
-            'karta-sajta', 'contacts', 'category', 'tag', 'author',
-            'privacy', 'advertisement', 'about', 'plugins', 'interesnoe',
-            'proza', 'stihi', 'novosti'
-        ]
-
-        for seed_url in seeds_to_visit:
-            if len(self.urls) >= needed:
-                break
-            if seed_url in visited_seeds:
+    
+        to_visit = list(self.config.get_seed_urls())
+        visited = set()
+    
+        while to_visit and len(self.urls) < needed:
+            current_url = to_visit.pop(0)
+        
+            if current_url in visited:
                 continue
-            visited_seeds.add(seed_url)
-
-            response = make_request(seed_url, self.config)
-            if not response or response.status_code != 200:
+        
+            visited.add(current_url)
+        
+            try:
+                response = make_request(current_url, self.config)
+                if response.status_code != 200:
+                    continue
+                
+                soup = BeautifulSoup(response.content, 'html.parser')
+            
+                for link in soup.find_all('a', href=True):
+                    href = link.get('href', '')
+                    if not href:
+                        continue
+                
+                    full_url = urljoin("http://www.jvanetsky.ru/", href)
+                
+                    if not full_url.startswith("http://www.jvanetsky.ru/"):
+                        continue
+                
+                    if '/text/' in full_url and '/data/text/' not in full_url:
+                        if full_url not in visited and full_url not in to_visit:
+                            to_visit.append(full_url)
+                
+                    elif '/data/text/' in full_url:
+                        if 'contacts' not in full_url:
+                            if full_url not in self.urls and len(self.urls) < needed:
+                                self.urls.append(full_url)
+                            
+            except Exception:
                 continue
-
-            soup = BeautifulSoup(response.content, 'html.parser')
-
-            for link in soup.find_all('a'):
-                href = link.get("href", "")
-                if not href:
-                    continue
-
-                article_url = self._extract_url(link)
-                if not article_url or not article_url.startswith("https://carsson.ru/"):
-                    continue
-
-                if "/page/" in article_url:
-                    if article_url not in visited_seeds and article_url not in seeds_to_visit:
-                        seeds_to_visit.append(article_url)
-                    continue
-
-                if article_url in ("https://carsson.ru", "https://carsson.ru/") or \
-                        any(word in article_url.lower() for word in blacklisted_keywords):
-                    continue
-
-                if link.find_parent(['h1', 'h2', 'article']) and article_url not in self.urls:
-                    if len(self.urls) < needed:
-                        self.urls.append(article_url)
 
 
 # 10

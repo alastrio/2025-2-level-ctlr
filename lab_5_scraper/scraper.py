@@ -242,16 +242,16 @@ class Crawler:
         href = article_bs.get("href", "")
         if not href:
             return ""
-    
-        href_str = str(href).strip()
-    
-        if href_str.startswith("http://") or href_str.startswith("https://"):
+
+        href_str = str(href)
+
+        if href_str.startswith("http"):
             return href_str
-    
+
         if href_str.startswith("/"):
-            href_str = href_str[1:]
-    
-        return urljoin("http://www.jvanetsky.ru/", href_str)
+            href_str = href_str.lstrip("/")
+
+        return urljoin("http://www.jvanetsky.ru/", href)
 
 
     def find_articles(self) -> None:
@@ -259,47 +259,39 @@ class Crawler:
         Find articles.
         """
         needed = self.config.get_num_articles()
-    
-        to_visit = list(self.config.get_seed_urls())
-        visited = set()
-    
-        while to_visit and len(self.urls) < needed:
-            current_url = to_visit.pop(0)
-        
-            if current_url in visited:
+        seeds_to_visit = list(self.config.get_seed_urls())
+        visited_seeds = set()
+
+        for seed_url in seeds_to_visit:
+            if len(self.urls) >= needed:
+                break
+            if seed_url in visited_seeds:
                 continue
-        
-            visited.add(current_url)
-        
-            try:
-                response = make_request(current_url, self.config)
-                if response.status_code != 200:
+            visited_seeds.add(seed_url)
+
+            response = make_request(seed_url, self.config)
+            if not response or response.status_code != 200:
+                continue
+
+            soup = BeautifulSoup(response.content, 'html.parser')
+
+            for link in soup.find_all('a'):
+                href = link.get("href", "")
+                if not href:
                     continue
-                
-                soup = BeautifulSoup(response.content, 'html.parser', 
-                                from_encoding=self.config.get_encoding())
-            
-                for link in soup.find_all('a', href=True):
-                    full_url = self._extract_url(link)
-                
-                    if not full_url:
-                        continue
-                
-                    if full_url in ("http://www.jvanetsky.ru", "http://www.jvanetsky.ru/"):
-                        continue
-                
-                    if "/text/" in full_url:
-                        if full_url not in visited and full_url not in to_visit:
-                            to_visit.append(full_url)
-                        continue
-                
-                    if "/data/text/" in full_url:
-                        if full_url not in self.urls and len(self.urls) < needed:
-                            self.urls.append(full_url)
-                        
-            except Exception as e:
-                print(f"Error processing {current_url}: {e}")
-                continue
+
+                article_url = self._extract_url(link)
+                if not article_url or not article_url.startswith("http://www.jvanetsky.ru/"):
+                    continue
+
+                if "/text/" in article_url:
+                    if article_url not in visited_seeds and article_url not in seeds_to_visit:
+                        seeds_to_visit.append(article_url)
+                    continue
+
+                if "/data/text/" in article_url and article_url not in self.urls:
+                    if len(self.urls) < needed:
+                        self.urls.append(article_url)
 
 
 # 10

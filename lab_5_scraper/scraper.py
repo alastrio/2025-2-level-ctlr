@@ -239,31 +239,59 @@ class Crawler:
         Returns:
             str: Url from HTML
         """
-        relative_link = str(article_bs.get("href"))
-        return relative_link
+        href = article_bs.get("href", "")
+        if not href:
+            return ""
+
+        href_str = str(href)
+
+        if href_str.startswith("http"):
+            return href_str
+
+        if href_str.startswith("/"):
+            href_str = href_str[1:]
+
+        return "http://www.jvanetsky.ru/" + href_str
 
 
     def find_articles(self) -> None:
         """
         Find articles.
         """
-        for seed_url in self.config.get_seed_urls():
-            if len(self.urls) > self.config.get_num_articles():
+        needed = self.config.get_num_articles()
+        seeds_to_visit = list(self.config.get_seed_urls())
+        visited_seeds = set()
+
+        for seed_url in seeds_to_visit:
+            if len(self.urls) >= needed:
                 break
+            if seed_url in visited_seeds:
+                continue
+            visited_seeds.add(seed_url)
+
             response = make_request(seed_url, self.config)
-            if response and response.status_code == 200:
-                soup = BeautifulSoup(response.text)
-                all_links = soup.find_all("a")
-                for link_tag in all_links: #going through tags of links located in an html page
-                    new_relative_url = self._extract_url(link_tag)
-                    new_full_url = urljoin(seed_url, new_relative_url)
-                    if (
-                    '/item/' in new_full_url
-                    and
-                    new_full_url not in self.urls
-                    ):
-                        self.urls.append(new_full_url)
-                    time.sleep(1)
+            if not response or response.status_code != 200:
+                continue
+
+            soup = BeautifulSoup(response.content, 'html.parser')
+
+            for link in soup.find_all('a'):
+                href = link.get("href", "")
+                if not href:
+                    continue
+
+                article_url = self._extract_url(link)
+                if not article_url or not article_url.startswith("https://carsson.ru/"):
+                    continue
+
+                if "/page/" in article_url:
+                    if article_url not in visited_seeds and article_url not in seeds_to_visit:
+                        seeds_to_visit.append(article_url)
+                    continue
+
+                if link.find_parent(['h1', 'h2', 'article']) and article_url not in self.urls:
+                    if len(self.urls) < needed:
+                        self.urls.append(article_url)
 
     def get_search_urls(self) -> list:
         """
@@ -328,23 +356,11 @@ class HTMLParser:
         Args:
             article_soup (bs4.BeautifulSoup): BeautifulSoup instance
         """
-        texts = []
-        content_div = article_soup.find("div", class_="itemFullText")
-        if not content_div:
-            content_div = article_soup.find("div", class_="article-content")
-        if not content_div:
-            content_div = article_soup.find("div", itemprop="articleBody")
-        if content_div:
-            for tag in content_div.find_all(["p", "blockquote", "div"]):
-                text = tag.get_text(strip=True)
-                if text:
-                    texts.append(text)
-        else:
-            for tag in article_soup.find_all(["p", "blockquote"]):
-                text = tag.get_text(strip=True)
-                if text:
-                    texts.append(text)
-        self.article.text = " ".join(texts)
+        paragraphs = article_soup.find_all('p')
+        text_blocks = [p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True)]
+
+        final_text = ' '.join(text_blocks)
+        self.article.text = final_text
 
     def _fill_article_with_meta_information(self, article_soup: BeautifulSoup) -> None:
         """
@@ -376,17 +392,9 @@ class HTMLParser:
         if not response or response.status_code != 200:
             return self.article
 
-        try:
-            response = make_request(self.full_url, self.config)
-            time.sleep(1)
-            if response.status_code != 200:
-                return False
-            response.encoding = self.config.get_encoding()
-            article_bs = BeautifulSoup(response.text, "html.parser")
-            self._fill_article_with_text(article_bs)
-            self._fill_article_with_meta_information(article_bs)
-        except(requests.RequestException, AttributeError, KeyError, ValueError, TypeError):
-            return False
+        soup = BeautifulSoup(response.text, 'html.parser')
+        self._fill_article_with_meta_information(soup)
+        self._fill_article_with_text(soup)
         return self.article
 
 
@@ -397,6 +405,7 @@ def prepare_environment(base_path: pathlib.Path | str) -> None:
     Args:
         base_path (pathlib.Path | str): Path where articles stores
     """
+    base_path = pathlib.Path(base_path)
     if base_path.exists():
         shutil.rmtree(base_path)
     base_path.mkdir(parents=True)

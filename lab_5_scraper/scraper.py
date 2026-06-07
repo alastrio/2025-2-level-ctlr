@@ -343,7 +343,6 @@ class CrawlerRecursive(Crawler):
 
         if len(self.urls) >= needed:
             return
-        
         stack = [self.start_url]
 
         while stack and len(self.urls) < needed:
@@ -374,7 +373,6 @@ class CrawlerRecursive(Crawler):
 
             with open(self.state_file, 'w', encoding='utf-8') as f:
                 json.dump({'urls': self.urls, 'visited_seeds': list(self.visited_seeds)}, f)
-                
         try:
             if len(self.urls) >= needed:
                 self.state_file.unlink()

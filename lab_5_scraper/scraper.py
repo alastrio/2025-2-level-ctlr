@@ -322,11 +322,97 @@ class CrawlerRecursive(Crawler):
         """
         super().__init__(config)
         self.start_url = self.config.get_seed_urls()[0]
+        self.num_articles = self.config.get_num_articles()
+        self.visited_seeds = set()
+        self.state_file = ASSETS_PATH / "recursive_state.json"
 
     def find_articles(self) -> None:
         """
         Find number of article urls requested.
         """
+        needed = self.num_articles
+
+        if self.state_file.exists():
+            try:
+                with open(self.state_file, 'r', encoding='utf-8') as f:
+                    state = json.load(f)
+                self.urls = state.get('urls', [])
+                self.visited_seeds = set(state.get('visited_seeds', []))
+            except (json.JSONDecodeError, KeyError, FileNotFoundError):
+                self.visited_seeds = set()
+        
+        if len(self.urls) >= needed:
+            if self.state_file.exists():
+                try:
+                    self.state_file.unlink()
+                except OSError:
+                    pass
+        
+        stack = [self.start_url]
+        
+        while stack and len(self.urls) < needed:
+            current_url = stack.pop()
+            
+            if current_url in self.visited_seeds:
+                continue
+            
+            self.visited_seeds.add(current_url)
+            
+            try:
+                with open(self.state_file, 'w', encoding='utf-8') as f:
+                    json.dump({'urls': list(self.urls), 'visited_seeds': list(self.visited_seeds)}, f)
+            except (OSError, json.JSONEncodeError):
+                pass
+            
+            try:
+                response = make_request(current_url, self.config)
+                if response.status_code != 200:
+                    continue
+                
+                soup = BeautifulSoup(response.content, 'html.parser')
+                urls_on_page = set()
+                
+                for link in soup.find_all('a', href=True):
+                    href = str(link.get('href', ''))
+                    if not href:
+                        continue
+                    full_url = urljoin("http://www.jvanetsky.ru/", href)
+                    if not isinstance(full_url, str):
+                        continue
+                    if not full_url.startswith("http://www.jvanetsky.ru/"):
+                        continue
+                    full_url = full_url.split('#')[0].split('?')[0]
+                    if full_url in ("http://www.jvanetsky.ru", "http://www.jvanetsky.ru/"):
+                        continue
+                    if 'contacts' in full_url:
+                        continue
+                    urls_on_page.add(full_url)
+
+                for url in urls_on_page:
+                    if len(self.urls) >= needed:
+                        break
+                    if '/data/text/' in url and url not in self.urls:
+                        self.urls.append(url)
+                        try:
+                            with open(self.state_file, 'w', encoding='utf-8') as f:
+                                json.dump({'urls': list(self.urls), 'visited_seeds': list(self.visited_seeds)}, f)
+                        except (OSError, json.JSONEncodeError):
+                            pass
+
+                for url in urls_on_page:
+                    if len(self.urls) >= needed:
+                        break
+                    if '/text/' in url and '/data/text/' not in url and url not in self.visited_seeds:
+                        stack.append(url)
+                        
+            except (requests.RequestException, ConnectionError, TimeoutError):
+                continue
+        
+        if len(self.urls) >= needed and self.state_file.exists():
+            try:
+                self.state_file.unlink()
+            except OSError:
+                pass
 
 
 # 4, 6, 8, 10

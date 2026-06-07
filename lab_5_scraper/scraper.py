@@ -379,11 +379,11 @@ class CrawlerRecursive(Crawler):
             except OSError:
                 continue
         
-        if self.state_file.exists() and len(self.urls) >= needed:
-            try:
+        try:
+            if len(self.urls) >= needed:
                 self.state_file.unlink()
-            except OSError:
-                pass
+        except OSError:
+            pass
 
 
 # 4, 6, 8, 10

@@ -331,34 +331,34 @@ class CrawlerRecursive(Crawler):
         Find number of article urls requested.
         """
         needed = self.num_articles
-        
+
         if self.state_file.exists():
             try:
-                with open(self.state_file) as f:
+                with open(self.state_file, encoding='utf-8') as f:
                     state = json.load(f)
                 self.urls = state.get('urls', [])
                 self.visited_seeds = set(state.get('visited_seeds', []))
             except OSError:
                 pass
-        
+
         if len(self.urls) >= needed:
             return
         
         stack = [self.start_url]
-        
+
         while stack and len(self.urls) < needed:
             current = stack.pop()
             if current in self.visited_seeds:
                 continue
-            
+
             self.visited_seeds.add(current)
-            
+
             r = make_request(current, self.config)
             if r.status_code != 200:
                 continue
-                
+
             soup = BeautifulSoup(r.content, 'html.parser')
-                
+
             for link in soup.find_all('a', href=True):
                 u = urljoin("http://www.jvanetsky.ru/", str(link.get('href', '')).strip())
                 if isinstance(u, str) and u.startswith("http://www.jvanetsky.ru/"):
@@ -367,14 +367,14 @@ class CrawlerRecursive(Crawler):
                         self.urls.append(u)
                     elif (
                         '/text/' in u 
-                        and '/data/text/' not in u 
+                        and '/data/text/' not in u
                         and u not in self.visited_seeds
                         ):
                         stack.append(u)
-                
-            with open(self.state_file, 'w') as f:
+
+            with open(self.state_file, 'w', encoding='utf-8') as f:
                 json.dump({'urls': self.urls, 'visited_seeds': list(self.visited_seeds)}, f)
-        
+                
         try:
             if len(self.urls) >= needed:
                 self.state_file.unlink()

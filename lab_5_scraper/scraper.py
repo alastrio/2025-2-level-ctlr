@@ -331,14 +331,14 @@ class CrawlerRecursive(Crawler):
         Find number of article urls requested.
         """
         needed = self.num_articles
-
+        
         if self.state_file.exists():
             try:
                 with open(self.state_file, 'r', encoding='utf-8') as f:
                     state = json.load(f)
                 self.urls = state.get('urls', [])
                 self.visited_seeds = set(state.get('visited_seeds', []))
-            except (json.JSONDecodeError, KeyError, FileNotFoundError):
+            except (KeyError, FileNotFoundError):
                 self.visited_seeds = set()
         
         if len(self.urls) >= needed:
@@ -352,7 +352,6 @@ class CrawlerRecursive(Crawler):
         
         while stack and len(self.urls) < needed:
             current_url = stack.pop()
-            
             if current_url in self.visited_seeds:
                 continue
             
@@ -360,8 +359,9 @@ class CrawlerRecursive(Crawler):
             
             try:
                 with open(self.state_file, 'w', encoding='utf-8') as f:
-                    json.dump({'urls': list(self.urls), 'visited_seeds': list(self.visited_seeds)}, f)
-            except (OSError, json.JSONEncodeError):
+                    json.dump({'urls': list(self.urls), 
+                               'visited_seeds': list(self.visited_seeds)}, f)
+            except OSError:
                 pass
             
             try:
@@ -374,19 +374,18 @@ class CrawlerRecursive(Crawler):
                 
                 for link in soup.find_all('a', href=True):
                     href = str(link.get('href', ''))
-                    if not href:
-                        continue
-                    full_url = urljoin("http://www.jvanetsky.ru/", href)
-                    if not isinstance(full_url, str):
-                        continue
-                    if not full_url.startswith("http://www.jvanetsky.ru/"):
-                        continue
-                    full_url = full_url.split('#')[0].split('?')[0]
-                    if full_url in ("http://www.jvanetsky.ru", "http://www.jvanetsky.ru/"):
-                        continue
-                    if 'contacts' in full_url:
-                        continue
-                    urls_on_page.add(full_url)
+                    if href:
+                        full_url = urljoin("http://www.jvanetsky.ru/", href)
+                        if (
+                            isinstance(full_url, str) 
+                            and full_url.startswith("http://www.jvanetsky.ru/")
+                            ):
+                            full_url = full_url.split('#')[0].split('?')[0]
+                            if (
+                                full_url not in ("http://www.jvanetsky.ru/") 
+                                and 'contacts' not in full_url
+                                ):
+                                urls_on_page.add(full_url)
 
                 for url in urls_on_page:
                     if len(self.urls) >= needed:
@@ -395,19 +394,24 @@ class CrawlerRecursive(Crawler):
                         self.urls.append(url)
                         try:
                             with open(self.state_file, 'w', encoding='utf-8') as f:
-                                json.dump({'urls': list(self.urls), 'visited_seeds': list(self.visited_seeds)}, f)
-                        except (OSError, json.JSONEncodeError):
+                                json.dump({'urls': list(self.urls), 
+                                           'visited_seeds': list(self.visited_seeds)}, f)
+                        except OSError:
                             pass
 
                 for url in urls_on_page:
                     if len(self.urls) >= needed:
                         break
-                    if '/text/' in url and '/data/text/' not in url and url not in self.visited_seeds:
+                    if (
+                        '/text/' in url 
+                        and '/data/text/' not in url 
+                        and url not in self.visited_seeds
+                        ):
                         stack.append(url)
                         
             except (requests.RequestException, ConnectionError, TimeoutError):
                 continue
-        
+            
         if len(self.urls) >= needed and self.state_file.exists():
             try:
                 self.state_file.unlink()

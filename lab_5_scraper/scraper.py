@@ -353,31 +353,27 @@ class CrawlerRecursive(Crawler):
             
             self.visited_seeds.add(current)
             
-            try:
-                r = make_request(current, self.config)
-                if r.status_code != 200:
-                    continue
-                
-                soup = BeautifulSoup(r.content, 'html.parser')
-                
-                for link in soup.find_all('a', href=True):
-                    u = urljoin("http://www.jvanetsky.ru/", str(link.get('href', '')).strip())
-                    if isinstance(u, str) and u.startswith("http://www.jvanetsky.ru/"):
-                        u = u.split('#')[0]
-                        if '/data/text/' in u and 'contacts' not in u and u not in self.urls:
-                            self.urls.append(u)
-                        elif (
-                            '/text/' in u 
-                            and '/data/text/' not in u 
-                            and u not in self.visited_seeds
-                            ):
-                            stack.append(u)
-                
-                with open(self.state_file, 'w') as f:
-                    json.dump({'urls': self.urls, 'visited_seeds': list(self.visited_seeds)}, f)
-                        
-            except OSError:
+            r = make_request(current, self.config)
+            if r.status_code != 200:
                 continue
+                
+            soup = BeautifulSoup(r.content, 'html.parser')
+                
+            for link in soup.find_all('a', href=True):
+                u = urljoin("http://www.jvanetsky.ru/", str(link.get('href', '')).strip())
+                if isinstance(u, str) and u.startswith("http://www.jvanetsky.ru/"):
+                    u = u.split('#')[0]
+                    if '/data/text/' in u and 'contacts' not in u and u not in self.urls:
+                        self.urls.append(u)
+                    elif (
+                        '/text/' in u 
+                        and '/data/text/' not in u 
+                        and u not in self.visited_seeds
+                        ):
+                        stack.append(u)
+                
+            with open(self.state_file, 'w') as f:
+                json.dump({'urls': self.urls, 'visited_seeds': list(self.visited_seeds)}, f)
         
         try:
             if len(self.urls) >= needed:

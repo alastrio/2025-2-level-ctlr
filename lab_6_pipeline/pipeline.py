@@ -7,7 +7,6 @@ import importlib
 import pathlib
 from typing import cast
 
-from core_utils.article.article import Article
 from core_utils import visualizer
 from core_utils.article.article import Article, ArtifactType
 from core_utils.article.io import from_meta, from_raw, to_cleaned, to_meta
@@ -86,23 +85,19 @@ class CorpusManager:
         if not raw_files:
             raise InconsistentDatasetError("Dataset does not contain raw text files.")
 
-        if len(raw_files) != len(meta_files):
-            raise InconsistentDatasetError("The number of raw and meta files is different.")
-
-        raw_ids = sorted(int(file.stem.split("_")[0]) for file in raw_files)
-        meta_ids = sorted(int(file.stem.split("_")[0]) for file in meta_files)
-
-        if raw_ids != meta_ids:
-            raise InconsistentDatasetError("Raw and meta file ids are different.")
-
-        expected_ids = list(range(1, len(raw_ids) + 1))
-
-        if raw_ids != expected_ids:
-            raise InconsistentDatasetError("Article ids must go from 1 to N without gaps.")
+        for raw_file in raw_files:
+            article_id = raw_file.stem.split("_")[0]
+            expected_meta = self.path_to_raw_txt_data / f"{article_id}_meta.json"
+            if not expected_meta.exists():
+                raise InconsistentDatasetError(f"Meta file for article {article_id} is missing.")
 
         for raw_file in raw_files:
             if raw_file.stat().st_size == 0:
                 raise InconsistentDatasetError(f"File {raw_file.name} is empty.")
+    
+        for meta_file in meta_files:
+            if meta_file.stat().st_size == 0:
+                raise InconsistentDatasetError(f"File {meta_file.name} is empty.")
 
     def _scan_dataset(self) -> None:
         """

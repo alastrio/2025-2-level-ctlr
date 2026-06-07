@@ -6,6 +6,7 @@ Pipeline for CONLL-U formatting.
 import importlib
 import pathlib
 from typing import cast
+
 import matplotlib.pyplot as plt
 import spacy_conll
 import spacy_udpipe
@@ -226,16 +227,19 @@ class UDPipeAnalyzer(LibraryWrapper):
                 "UDPipe model was not found in lab_6_pipeline/assets/model"
             )
 
-        udpipe_module = importlib.import_module("spacy_udpipe")
-        load_from_path = getattr(udpipe_module, "load_from_path")
-
-        return cast(
-            Language,
-            load_from_path(
-                lang="ru",
-                path=str(model_files[0]),
-            ),
+        analyzer = spacy_udpipe.load_from_path(
+            lang="ru",
+            path=str(model_files[0]),
         )
+        analyzer.add_pipe(
+            "conll_formatter",
+            config={
+                "include_headers": True,
+                "field_names": {},
+            },
+            last=True,
+        )
+        return analyzer
 
     def analyze(self, texts: list[str]) -> list[str]:
         """

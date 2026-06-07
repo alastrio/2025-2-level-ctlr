@@ -263,9 +263,9 @@ class Crawler:
         to_visit = list(self.config.get_seed_urls())
         visited = set()
 
-        while to_visit < needed and len(self.urls) < needed:
+        while to_visit and len(self.urls) < needed:
             current_url = to_visit.pop(0)
-        
+
             if current_url in visited:
                 continue
 
@@ -276,7 +276,6 @@ class Crawler:
                 continue
 
             soup = BeautifulSoup(response.content, 'html.parser')
-            
             for link in soup.find_all('a', href=True):
                 href = str(link.get('href', ''))
                 if not href:

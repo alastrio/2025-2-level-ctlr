@@ -82,31 +82,46 @@ class CorpusManager:
         try:
             files = list(self.path_to_raw_txt_data.iterdir())
         except OSError as exc:
-            raise EmptyDirectoryError(f"Cannot read: {self.path_to_raw_txt_data}") from exc
+            raise EmptyDirectoryError(f"Cannot read directory: {self.path_to_raw_txt_data}") from exc
 
         if not files:
             raise EmptyDirectoryError(f"Directory is empty: {self.path_to_raw_txt_data}")
 
-        raw_dict = {}
-        meta_dict = {}
+        raw_ids = []
+        meta_ids = []
 
         for f in files:
-            if f.is_file():
-                n = f.name
-                if n.endswith("_raw.txt") and n[:-8].isdigit():
-                    raw_dict[int(n[:-8])] = f
-                elif n.endswith("_meta.json") and n[:-10].isdigit():
-                    meta_dict[int(n[:-10])] = f
+            if not f.is_file():
+                continue
+            name = f.name
+            if name.endswith("_raw.txt") and name[:-8].isdigit():
+                raw_ids.append(int(name[:-8]))
+            elif name.endswith("_meta.json") and name[:-10].isdigit():
+                meta_ids.append(int(name[:-10]))
 
-        if not raw_dict:
+        if not raw_ids:
             raise EmptyDirectoryError(f"No valid raw files found in: {self.path_to_raw_txt_data}")
 
-        all_ids = set(raw_dict) | set(meta_dict)
-        if all_ids and all_ids != set(range(1, max(all_ids) + 1)):
-            raise InconsistentDatasetError(f"Inconsistent IDs. Found: {sorted(all_ids)}")
-
-        for f in list(raw_dict.values()) + list(meta_dict.values()):
-            if f.stat().st_size == 0:
+        if len(raw_ids) != len(meta_ids):
+            raise InconsistentDatasetError(
+                f"The number of raw and meta files is different."
+            )
+        
+        raw_ids_set = set(raw_ids)
+        meta_ids_set = set(meta_ids)
+        if raw_ids_set != meta_ids_set:
+            raise InconsistentDatasetError(
+                f"Raw and meta files have different IDs."
+            )
+        
+        expected_ids = set(range(1, len(raw_ids) + 1))
+        if raw_ids_set != expected_ids:
+            raise InconsistentDatasetError(
+                f"Raw files have inconsistent numbering"
+            )
+        
+        for f in files:
+            if f.is_file() and f.stat().st_size == 0:
                 raise InconsistentDatasetError(f"File is empty: {f.name}")
 
     def _scan_dataset(self) -> None:

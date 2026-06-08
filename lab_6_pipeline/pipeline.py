@@ -75,41 +75,39 @@ class CorpusManager:
         Validate folder with assets.
         """
         if not self.path_to_raw_txt_data.exists():
-            raise FileNotFoundError(f"Path does not exist: {self.path_to_raw_txt_data}")
+            raise FileNotFoundError("Dataset folder does not exist.")
+
         if not self.path_to_raw_txt_data.is_dir():
-            raise NotADirectoryError(f"Path is not a directory: {self.path_to_raw_txt_data}")
-        
-        try:
-            files = list(self.path_to_raw_txt_data.iterdir())
-        except OSError as exc:
-            raise EmptyDirectoryError(f"Cannot read directory: {self.path_to_raw_txt_data}") from exc
-        
+            raise NotADirectoryError("Dataset path is not a directory.")
+
+        files = [file for file in self.path_to_raw_txt_data.iterdir() if file.is_file()]
+
         if not files:
-            raise EmptyDirectoryError(f"Directory is empty: {self.path_to_raw_txt_data}")
-        
-        raw_ids = set()
-        meta_ids = set()
+            raise EmptyDirectoryError("Dataset folder is empty.")
 
-        for f in files:
-            if f.is_file():
-                name = f.name
-                if name.endswith("_raw.txt") and name[:-8].isdigit():
-                    raw_ids.add(int(name[:-8]))
-                elif name.endswith("_meta.json") and name[:-10].isdigit():
-                    meta_ids.add(int(name[:-10]))
+        raw_files = sorted(self.path_to_raw_txt_data.glob("*_raw.txt"))
+        meta_files = sorted(self.path_to_raw_txt_data.glob("*_meta.json"))
 
-        if not raw_ids:
-            raise EmptyDirectoryError(f"No valid raw files found in: {self.path_to_raw_txt_data}")
-        
-        if len(raw_ids) != len(meta_ids) or raw_ids != meta_ids:
-            raise InconsistentDatasetError("Raw and meta files are imbalanced or have different IDs")
-        
-        if raw_ids != set(range(1, len(raw_ids) + 1)):
-            raise InconsistentDatasetError(f"Inconsistent numbering. Found IDs: {sorted(raw_ids)}")
-        
-        for f in files:
-            if f.is_file() and f.stat().st_size == 0:
-                raise InconsistentDatasetError(f"File is empty: {f.name}")
+        if not raw_files:
+            raise InconsistentDatasetError("Dataset does not contain raw text files.")
+
+        if len(raw_files) != len(meta_files):
+            raise InconsistentDatasetError("The number of raw and meta files is different.")
+
+        raw_ids = sorted(int(file.stem.split("_")[0]) for file in raw_files)
+        meta_ids = sorted(int(file.stem.split("_")[0]) for file in meta_files)
+
+        if raw_ids != meta_ids:
+            raise InconsistentDatasetError("Raw and meta file ids are different.")
+
+        expected_ids = list(range(1, len(raw_ids) + 1))
+
+        if raw_ids != expected_ids:
+            raise InconsistentDatasetError("Article ids must go from 1 to N without gaps.")
+
+        for raw_file in raw_files:
+            if raw_file.stat().st_size == 0:
+                raise InconsistentDatasetError(f"File {raw_file.name} is empty.")
 
     def _scan_dataset(self) -> None:
         """
@@ -221,48 +219,8 @@ class UDPipeAnalyzer(LibraryWrapper):
         """
         analyzed_texts = []
 
-        for text in texts:
-            doc = self._analyzer(text)
-            conllu_lines = []
-            sentence_id = 1
-
-            for sentence in doc.sents:
-                conllu_lines.append(f"# sent_id = {sentence_id}")
-                conllu_lines.append(f"# text = {sentence.text}")
-
-                for token_number, token in enumerate(sentence, start=1):
-                    head_number = 0
-
-                    if token.head != token:
-                        head_number = token.head.i - sentence.start + 1
-
-                    morph = str(token.morph) if str(token.morph) else "_"
-                    misc = "_"
-
-                    if not token.whitespace_:
-                        misc = "SpaceAfter=No"
-
-                    conllu_lines.append(
-                        "\t".join(
-                            [
-                                str(token_number),
-                                token.text,
-                                token.lemma_,
-                                token.pos_,
-                                token.tag_ or "_",
-                                morph,
-                                str(head_number),
-                                token.dep_,
-                                "_",
-                                misc,
-                            ]
-                        )
-                    )
-
-                conllu_lines.append("")
-                sentence_id += 1
-
-            analyzed_texts.append("\n".join(conllu_lines))
+        for doc in self._analyzer.pipe(texts):
+            analyzed_texts.append(doc._.conll_str)
 
         return analyzed_texts
 
